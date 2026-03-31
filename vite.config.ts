@@ -234,12 +234,12 @@ const config = defineConfig({
 
   server: {
     host: true,
-    port: 3000,
+    port: 3002,
     strictPort: true,
     allowedHosts: true,
     hmr: {
       host: "localhost",
-      port: 3000,
+      port: 3002,
     },
   },
 });

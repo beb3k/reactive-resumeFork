@@ -142,7 +142,7 @@ cd reactive-resume
 docker compose up -d
 
 # Access the app
-open http://localhost:3000
+open http://localhost:3002
 ```
 
 [![Build with Ona](https://ona.com/build-with-ona.svg)](https://app.ona.com/#https://github.com/amruthpillai/reactive-resume)
