@@ -15,6 +15,9 @@ import { generatePrinterToken } from "@/utils/printer-token";
 import { getStorageService, uploadFile } from "./storage";
 
 const SCREENSHOT_TTL = 1000 * 60 * 60 * 6; // 6 hours
+const BROWSERLESS_SESSION_TIMEOUT_MS = 120_000;
+const PRINTER_READY_TIMEOUT_MS = 30_000;
+const PRINTER_FONT_READY_GRACE_MS = 3_000;
 
 // Singleton browser instance for connection reuse
 let browserInstance: Browser | null = null;
@@ -42,6 +45,10 @@ async function getBrowser(): Promise<Browser> {
   const isWebSocket = endpoint.protocol.startsWith("ws");
   const connectOptions: ConnectOptions = { acceptInsecureCerts: true };
 
+  if (!endpoint.searchParams.has("timeout")) {
+    endpoint.searchParams.set("timeout", `${BROWSERLESS_SESSION_TIMEOUT_MS}`);
+  }
+
   endpoint.searchParams.append("launch", JSON.stringify({ args }));
 
   if (isWebSocket) connectOptions.browserWSEndpoint = endpoint.toString();
@@ -56,6 +63,20 @@ async function closeBrowser(): Promise<void> {
     await browserInstance.close();
     browserInstance = null;
   }
+}
+
+async function waitForPrintableResume(page: Page): Promise<void> {
+  // The preview route shows a loading screen until the resume store is initialized.
+  // Once page nodes exist, Puppeteer's PDF renderer can wait for fonts separately.
+  await page.waitForFunction(() => document.querySelector("[data-page-index]") !== null, {
+    timeout: PRINTER_READY_TIMEOUT_MS,
+  });
+
+  await page
+    .waitForFunction(() => document.body.getAttribute("data-wf-loaded") === "true", {
+      timeout: PRINTER_FONT_READY_GRACE_MS,
+    })
+    .catch(() => null);
 }
 
 // Close browser on process termination
@@ -144,8 +165,8 @@ export const printerService = {
       // Wait for the page to fully load (network idle + custom loaded attribute)
       await page.emulateMediaType("print");
       await page.setViewport(pageDimensionsAsPixels[format]);
-      await page.goto(url, { waitUntil: "networkidle0" });
-      await page.waitForFunction(() => document.body.getAttribute("data-wf-loaded") === "true", { timeout: 5_000 });
+      await page.goto(url, { waitUntil: "domcontentloaded" });
+      await waitForPrintableResume(page);
 
       // Step 5: Adjust the DOM for proper PDF pagination
       // This runs in the browser context to modify CSS before PDF generation
@@ -359,8 +380,8 @@ export const printerService = {
       page = await browser.newPage();
 
       await page.setViewport(pageDimensionsAsPixels.a4);
-      await page.goto(url, { waitUntil: "networkidle0" });
-      await page.waitForFunction(() => document.body.getAttribute("data-wf-loaded") === "true", { timeout: 5_000 });
+      await page.goto(url, { waitUntil: "domcontentloaded" });
+      await waitForPrintableResume(page);
 
       const screenshotBuffer = await page.screenshot({ type: "webp", quality: 80 });
 

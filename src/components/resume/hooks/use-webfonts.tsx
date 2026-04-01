@@ -15,6 +15,11 @@ export function useWebfonts(typography: z.infer<typeof typographySchema>) {
 
     const body = document.body;
     if (body) body.setAttribute("data-wf-loaded", "false");
+    let isCancelled = false;
+
+    const markFontsReady = () => {
+      if (!isCancelled && isMounted() && body) body.setAttribute("data-wf-loaded", "true");
+    };
 
     async function loadFont(family: string, weights: string[]) {
       const font = webfontlist.find((font) => font.family === family);
@@ -44,14 +49,19 @@ export function useWebfonts(typography: z.infer<typeof typographySchema>) {
     const bodyTypography = typography.body;
     const headingTypography = typography.heading;
 
-    void Promise.all([
+    const fontLoadTimeoutId = window.setTimeout(markFontsReady, 3_000);
+
+    void Promise.allSettled([
       loadFont(bodyTypography.fontFamily, bodyTypography.fontWeights),
       loadFont(headingTypography.fontFamily, headingTypography.fontWeights),
-    ]).then(() => {
-      if (isMounted() && body) body.setAttribute("data-wf-loaded", "true");
+    ]).finally(() => {
+      window.clearTimeout(fontLoadTimeoutId);
+      markFontsReady();
     });
 
     return () => {
+      isCancelled = true;
+      window.clearTimeout(fontLoadTimeoutId);
       if (isMounted()) {
         if (body) body.removeAttribute("data-wf-loaded");
       }
